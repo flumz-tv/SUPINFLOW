@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
@@ -42,6 +43,13 @@ namespace Supinflow
     /// La zone de liquide est décrite par fillWidth / fillHeight / fillBottomLocalY
     /// en coordonnées locales du contenant — à caler sur la zone de remplissage du
     /// sprite de verrerie (60 % de la hauteur pour le bécher, 68 % pour l'éprouvette).
+    /// En mode overflow (éprouvette de précision), le quota correspond à une
+    /// graduation du verre : atteindre le quota ne valide PAS immédiatement —
+    /// le niveau doit se maintenir exactement à la graduation pendant
+    /// settleDuration secondes. Tout surplus pendant ce temps fait déborder le
+    /// contenant, définitivement (le liquide ne se retire pas) : le surplus
+    /// monte au-dessus de la graduation (jusqu'à overflowMaxHeight) et
+    /// l'événement Overflowed prévient le GameManager → défaite.
     /// </summary>
     public class ContainerFillLevel : MonoBehaviour
     {
@@ -54,11 +62,21 @@ namespace Supinflow
         [Tooltip("Largeur de la zone de liquide, en local.")]
         [SerializeField] private float fillWidth = 1.5f;
 
-        [Tooltip("Hauteur de la zone de liquide quand le contenant est plein, en local.")]
+        [Tooltip("Hauteur du liquide quand les quotas sont atteints (la graduation cible), en local.")]
         [SerializeField] private float fillHeight = 1.9f;
 
         [Tooltip("Ordonnée locale du fond de la zone de liquide.")]
         [SerializeField] private float fillBottomLocalY = -0.95f;
+
+        [Header("Overflow (contenants de précision)")]
+        [Tooltip("Contenant de précision : atteindre le quota ne valide pas immédiatement — le niveau doit tenir Settle Duration secondes sans surplus. Tout surplus fait déborder le contenant (définitif) et le liquide monte jusqu'à Overflow Max Height.")]
+        [SerializeField] private bool allowOverflow;
+
+        [Tooltip("Hauteur totale max du liquide en débordement (bord intérieur du verre, là où le SpriteMask s'arrête). Doit être > Fill Height.")]
+        [SerializeField] private float overflowMaxHeight = 2.5f;
+
+        [Tooltip("Durée (s) pendant laquelle le niveau doit rester exactement au quota pour valider le contenant.")]
+        [SerializeField] private float settleDuration = 3f;
 
         [Tooltip("Texte affiché au joueur (particules restantes). Optionnel.")]
         [SerializeField] private TMP_Text counterLabel;
@@ -68,8 +86,13 @@ namespace Supinflow
 
         public IReadOnlyList<FillLayer> Layers => layers;
 
-        /// <summary>Levé une seule fois, quand toutes les couches sont pleines.</summary>
+        /// <summary>Levé une seule fois, quand le contenant est définitivement validé :
+        /// au quota atteint — ou, en mode overflow, après le maintien réussi.</summary>
         public event Action<ContainerFillLevel> Filled;
+
+        /// <summary>Levé une seule fois si le contenant déborde (mode overflow) :
+        /// la validation devient impossible — défaite côté GameManager.</summary>
+        public event Action<ContainerFillLevel> Overflowed;
 
         public int RequiredCount
         {
@@ -93,6 +116,27 @@ namespace Supinflow
 
         public float FillRatio => RequiredCount > 0 ? (float)CurrentCount / RequiredCount : 0f;
 
+        /// <summary>
+        /// Particules absorbables en tout : les quotas, plus le débordement en mode
+        /// overflow. La densité est constante (fillHeight = RequiredCount particules),
+        /// donc la capacité du verre est proportionnelle à overflowMaxHeight.
+        /// </summary>
+        public int MaxCapacity
+        {
+            get
+            {
+                int required = RequiredCount;
+                if (!allowOverflow || required <= 0 || fillHeight <= 0f || overflowMaxHeight <= fillHeight)
+                {
+                    return required;
+                }
+                return Mathf.FloorToInt(required * overflowMaxHeight / fillHeight);
+            }
+        }
+
+        /// <summary>Particules absorbées au-delà des quotas (0 sans overflow).</summary>
+        public int OverflowCount => Mathf.Max(0, CurrentCount - RequiredCount);
+
         public bool IsFull
         {
             get
@@ -104,6 +148,19 @@ namespace Supinflow
                 return true;
             }
         }
+
+        /// <summary>Débordé (mode overflow) : du surplus est entré au-dessus de la
+        /// graduation — la validation est définitivement impossible.</summary>
+        public bool IsOverfilled => overfilled;
+
+        /// <summary>Le contenant compte pour la victoire : quotas atteints — et, en
+        /// mode overflow, niveau maintenu settleDuration secondes sans surplus.</summary>
+        public bool IsValidated => allowOverflow ? settled : IsFull;
+
+        private Coroutine settleRoutine;
+        private float settleRemaining;
+        private bool settled;
+        private bool overfilled;
 
         private void Awake()
         {
@@ -172,41 +229,111 @@ namespace Supinflow
             layerRenderers = result.ToArray();
         }
 
-        /// <summary>Vrai si une couche non pleine accepte cette couleur.</summary>
+        /// <summary>Vrai si une couche non pleine accepte cette couleur — ou, en mode
+        /// overflow, si une couche compatible existe et que le verre n'est pas à ras bord.</summary>
         public bool CanAccept(ParticleColor color)
         {
-            foreach (FillLayer layer in layers)
-            {
-                if (!layer.IsFull && layer.Accepts(color)) return true;
-            }
-            return false;
+            return FindTargetLayer(color) != null;
         }
 
         /// <summary>Enregistre une particule dans la première couche compatible. Retourne vrai si comptée.</summary>
         public bool AddParticle(ParticleColor color)
         {
-            foreach (FillLayer layer in layers)
+            FillLayer target = FindTargetLayer(color);
+            if (target == null) return false;
+
+            bool wasFull = IsFull;
+            target.currentCount++;
+
+            if (target.currentCount == target.requiredCount)
             {
-                if (layer.IsFull || !layer.Accepts(color)) continue;
+                string layerName = target.acceptAnyColor ? "toutes couleurs" : target.color.ToString();
+                Debug.Log($"Couche {layerName} pleine ({target.requiredCount} particules) : {name}", this);
+            }
 
-                layer.currentCount++;
-                UpdateLiquidVisual();
-                UpdateCounterLabel();
-
-                if (layer.IsFull)
+            if (allowOverflow && OverflowCount > 0)
+            {
+                MarkOverfilled();
+            }
+            else if (!wasFull && IsFull)
+            {
+                if (allowOverflow)
                 {
-                    string layerName = layer.acceptAnyColor ? "toutes couleurs" : layer.color.ToString();
-                    Debug.Log($"Couche {layerName} pleine ({layer.requiredCount} particules) : {name}", this);
+                    // Contenant de précision : le quota doit tenir settleDuration
+                    // secondes sans surplus avant de compter pour la victoire.
+                    settleRoutine = StartCoroutine(SettleCountdown());
                 }
-
-                if (IsFull)
+                else
                 {
                     Filled?.Invoke(this);
                     Debug.Log($"Contenant rempli ({RequiredCount} particules) : {name}", this);
                 }
-                return true;
             }
-            return false;
+
+            UpdateLiquidVisual();
+            UpdateCounterLabel();
+            return true;
+        }
+
+        /// <summary>Mode overflow : du surplus est entré au-dessus de la graduation.
+        /// Le liquide ne se retire pas, l'échec est définitif — maintien annulé,
+        /// Overflowed levé une seule fois.</summary>
+        private void MarkOverfilled()
+        {
+            if (overfilled) return;
+
+            overfilled = true;
+            if (settleRoutine != null)
+            {
+                StopCoroutine(settleRoutine);
+                settleRoutine = null;
+            }
+            settleRemaining = 0f;
+            Overflowed?.Invoke(this);
+            Debug.Log($"Contenant débordé (surplus au-dessus de la graduation) : {name}", this);
+        }
+
+        /// <summary>Compte à rebours de validation du mode overflow : si aucun surplus
+        /// ne l'interrompt (MarkOverfilled), le contenant est validé et Filled est levé.</summary>
+        private IEnumerator SettleCountdown()
+        {
+            settleRemaining = settleDuration;
+            while (settleRemaining > 0f)
+            {
+                UpdateCounterLabel();
+                yield return null;
+                settleRemaining -= Time.deltaTime;
+            }
+
+            settleRemaining = 0f;
+            settleRoutine = null;
+            settled = true;
+            UpdateCounterLabel();
+            Filled?.Invoke(this);
+            Debug.Log($"Contenant validé (niveau maintenu {settleDuration:0.#} s) : {name}", this);
+        }
+
+        /// <summary>
+        /// Couche qui recevrait une particule de cette couleur : la première couche
+        /// compatible non pleine, sinon — en mode overflow et tant que le verre n'est
+        /// pas à ras bord — la première couche compatible (le surplus s'empile
+        /// au-dessus de la graduation).
+        /// </summary>
+        private FillLayer FindTargetLayer(ParticleColor color)
+        {
+            foreach (FillLayer layer in layers)
+            {
+                if (!layer.IsFull && layer.Accepts(color)) return layer;
+            }
+
+            if (allowOverflow && CurrentCount < MaxCapacity)
+            {
+                foreach (FillLayer layer in layers)
+                {
+                    if (layer.Accepts(color)) return layer;
+                }
+            }
+            return null;
         }
 
         /// <summary>Empile les couches de liquide depuis le fond, chacune teintée à sa couleur.</summary>
@@ -252,10 +379,31 @@ namespace Supinflow
         }
 
         /// <summary>Affiche au joueur ce qu'il reste à verser ("12/30", puis "PLEIN").
-        /// Multi-couches : détail par couche ("Cyan 30/30 · Red 7/30").</summary>
+        /// Multi-couches : détail par couche ("Cyan 30/30 · Red 7/30").
+        /// Mode overflow : compte à rebours de maintien ("TENIR 2.3s"), puis "PLEIN"
+        /// une fois validé — ou "DÉBORDÉ !" si du surplus est entré.</summary>
         private void UpdateCounterLabel()
         {
             if (counterLabel == null) return;
+
+            if (allowOverflow)
+            {
+                if (overfilled)
+                {
+                    counterLabel.text = "DÉBORDÉ !";
+                    return;
+                }
+                if (settled)
+                {
+                    counterLabel.text = "PLEIN";
+                    return;
+                }
+                if (settleRoutine != null)
+                {
+                    counterLabel.text = $"TENIR {Mathf.Max(settleRemaining, 0f):0.0}s";
+                    return;
+                }
+            }
 
             if (IsFull)
             {
@@ -285,6 +433,11 @@ namespace Supinflow
                 Debug.LogWarning($"{name} : aucune couche définie — le contenant n'acceptera rien.", this);
             }
 
+            if (allowOverflow && overflowMaxHeight <= fillHeight)
+            {
+                Debug.LogWarning($"{name} : Allow Overflow est actif mais Overflow Max Height ({overflowMaxHeight}) ≤ Fill Height ({fillHeight}) — aucun débordement possible. Caler Overflow Max Height sur le bord intérieur du verre (gizmo rouge).", this);
+            }
+
             if (layerRenderers == null || layerRenderers.Length == 0 || layerRenderers[0] == null)
             {
                 Debug.LogWarning($"{name} : aucun SpriteRenderer de liquide assigné — le remplissage sera invisible.", this);
@@ -308,7 +461,9 @@ namespace Supinflow
         }
 
         /// <summary>Visualise la zone de liquide dans la Scene view (contenant sélectionné)
-        /// pour caler fillWidth / fillHeight / fillBottomLocalY sur le sprite de verrerie.</summary>
+        /// pour caler fillWidth / fillHeight / fillBottomLocalY sur le sprite de verrerie.
+        /// Cyan = zone de quota (le haut = la graduation cible) ; rouge = zone de
+        /// débordement jusqu'au bord du verre (mode overflow).</summary>
         private void OnDrawGizmosSelected()
         {
             Gizmos.matrix = transform.localToWorldMatrix;
@@ -316,6 +471,15 @@ namespace Supinflow
             Gizmos.DrawWireCube(
                 new Vector3(0f, fillBottomLocalY + fillHeight / 2f, 0f),
                 new Vector3(fillWidth, fillHeight, 0f));
+
+            if (allowOverflow && overflowMaxHeight > fillHeight)
+            {
+                float extra = overflowMaxHeight - fillHeight;
+                Gizmos.color = new Color(1f, 0.25f, 0.25f, 0.9f);
+                Gizmos.DrawWireCube(
+                    new Vector3(0f, fillBottomLocalY + fillHeight + extra / 2f, 0f),
+                    new Vector3(fillWidth, extra, 0f));
+            }
         }
     }
 }

@@ -1,5 +1,270 @@
 # SUPINFLOW — Journal de développement
 
+## 2026-07-09 (suite 4) — GravityInverter : flèches in-game + élan cassé
+
+### Constat (test des prefabs en Play — tout le reste validé)
+1. Les flèches de sens étaient des **gizmos** : visibles uniquement en Scene
+   view (toggle Gizmos actif), jamais dans le jeu.
+2. La particule **gardait son élan** : gravité inversée mais vitesse conservée,
+   elle finissait sa course avant de remonter — inversion molle.
+
+### Fait
+- **`GravityInverter.cs`** :
+  - Gizmos supprimés → **flèches réelles** : enfants `ArrowUp`/`ArrowDown` du
+    prefab, activées et centrées selon le mode par `ApplyArrowVisual()`
+    (`Awake` + `OnValidate` : visible en jeu ET dans l'éditeur, y compris en
+    changeant le mode dans l'Inspector — Toggle affiche les deux côte à côte).
+  - Nouveau champ `verticalMomentumKept` (0-1, défaut **0**) : à l'inversion
+    effective du sens, la vitesse verticale est multipliée par ce facteur.
+    0 = la particule repart immédiatement dans le nouveau sens ; 1 = ancien
+    comportement (élan conservé). Appliqué SEULEMENT quand le signe de la
+    gravité change vraiment — re-traverser une zone idempotente (SetUpward
+    sur particule déjà inversée) ne freine pas la particule.
+- **`GravityInverter.prefab`** reconstruit : racine à **scale 1** (collider
+  2×0.5), enfant `Zone` (visuel violet), flèches en sprites Square (tige +
+  pointe losange 45°), `ArrowDown` inactif par défaut (mode SetUpward).
+  ⚠ Pour redimensionner la zone sans étirer les flèches : ajuster l'enfant
+  `Zone` + le `m_Size` du BoxCollider2D, plutôt que scaler la racine.
+  Une instance déjà posée en scène avec un scale overridé est à recaler.
+
+### Validation attendue
+- La flèche violette est visible en jeu, dans le sens du mode ; changer le
+  mode dans l'Inspector met à jour la ou les flèches immédiatement.
+- Une particule qui entre à pleine vitesse repart vers le haut quasi
+  instantanément (verticalMomentumKept = 0).
+
+## 2026-07-09 (suite 3) — Obstacles : téléporteur, recoloration, gravité (niveaux 3-4-5)
+
+### Contexte
+Boucle de jeu complète validée (victoire multi-contenants, bicolore, précision
+avec maintien). Restaient les mécaniques d'obstacles des niveaux imposés.
+
+### Fait (code — `Scripts/Content/Obstacles/`)
+
+- **`Portal.cs`** (niveau 3, téléporteur) : trigger d'entrée → la particule est
+  déplacée au Transform `exitPoint` via `Rigidbody2D.position` (pas le
+  Transform : prise en compte physique immédiate), **vélocité conservée**
+  (elle ressort du plafond en poursuivant sa chute) et **décalage horizontal
+  d'entrée conservé** (le flux ne ressort pas empilé sur un point).
+  Unidirectionnel ; pour un aller-retour, deux Portals dont chaque ExitPoint
+  est HORS du trigger de l'autre (sinon boucle immédiate).
+- **`ColorGate.cs`** (niveau 4, NOUVEAU script) : toute particule qui traverse
+  prend `targetColor` via `SetColor()` — le prefab unique de particule paie
+  (cf. décision 2026-07-06). Visuel teinté à la couleur cible, éditeur compris
+  (`OnValidate`).
+- **`GravityInverter.cs`** (niveau 5, NOUVEAU script) : agit sur le
+  `gravityScale` du Rigidbody2D entrant. 3 modes : `SetUpward` (défaut,
+  idempotent — ROBUSTE pour le niveau 5), `SetDownward`, `Toggle` (riche pour
+  les niveaux mixtes ⚠ zone à dimensionner assez haute pour que la particule
+  fasse demi-tour dedans, sinon yo-yo sous la zone). Gizmo flèche(s) violette(s)
+  = sens appliqué.
+- **`Deleter.cs`** : détruit toute particule entrante (danger type bec Bunsen —
+  le quota d'émission est déjà consommé, le sucre est perdu).
+- **`Rotator.cs`** : rotation continue via Rigidbody2D **kinematic** +
+  `MoveRotation` dans FixedUpdate (un `transform.Rotate` serait invisible pour
+  la physique entre deux pas). Collider non trigger.
+
+**`ParticleController.cs`** — bornes de perte complétées : `killYTop` (+12,
+particule à gravité inversée qui rate le plafond) et `killX` (±12, « le sucre
+qui sort par un bord latéral est perdu », règle du sujet), en plus du `killY`
+existant. Sans elles, une particule partie hors écran ne mourrait jamais →
+`AliveCount` > 0 → jamais de défaite.
+
+### Prefabs (construits hors éditeur, `Prefabs/Obstacles/`)
+`Portal` (bouche 1.5×0.3 cyan + enfant `Visual` + enfant `ExitPoint` à (0,4),
+librement déplaçable — la racine reste à scale 1 pour ne pas distordre les
+enfants), `ColorGate` (1.5×0.4, teinte auto), `GravityInverter` (2×0.5 violet),
+`Deleter` (1.5×0.5 rouge), `Rotator` (barre 2.5×0.25, 90°/s), `Wall` (3×0.3,
+mur/plateforme statique sans script — sol, plafond, obstacles de niveau).
+Zones simples : le SCALE de la racine dimensionne sprite + collider ensemble.
+Les .meta (scripts et prefabs) ont été créés à la main avec des GUID générés —
+à contrôler au premier import Unity.
+
+### À faire dans l'éditeur Unity (Level_Test)
+1. Laisser Unity importer (les 2 nouveaux scripts + 6 prefabs apparaissent).
+2. Glisser les prefabs dans la scène et valider un par un :
+   - **Portal** sous le flux : les particules ressortent à l'ExitPoint (le
+     déplacer pour simuler sol → plafond), vitesse conservée.
+   - **ColorGate** sous le spawner : les particules changent de couleur en
+     traversant → les faire tomber dans un contenant de la couleur cible.
+   - **GravityInverter** : le flux remonte après traversée (mode SetUpward).
+     Les particules qui ratent tout disparaissent au-dessus de killYTop.
+   - **Deleter** : les particules disparaissent au contact.
+   - **Rotator** : la barre tourne, les particules rebondissent dessus.
+   - **Wall** : plateforme statique, à dupliquer/scaler pour sol et plafond.
+3. Rappel : ces zones sont des triggers — elles n'arrêtent PAS les particules
+   (sauf Rotator/Wall). Un Portal dans le sol se place DANS l'épaisseur du
+   Wall qui fait office de sol.
+
+### Validation attendue
+- Niveau 3 simulable : trou dans le sol (Portal) → sortie au plafond.
+- Niveau 4 simulable : 2 ColorGates de couleurs différentes + contenants assortis.
+- Niveau 5 simulable : GravityInverter + contenant retourné ? Non — contenant
+  posé en hauteur, ouverture vers le bas non requise : le trigger absorbe par
+  n'importe quelle face.
+
+## 2026-07-09 (suite 2) — Précision : maintenir le niveau 3 s (éprouvette)
+
+### Constat (test GameManager en Play)
+Multi-contenants et bicolore validés (victoire seulement quand tout est
+rempli). Mais sur le TestTube en mode overflow, la victoire tombait dès le
+quota atteint — même si le flux continuait et débordait juste après. Et le
+débordement ne provoquait aucune défaite.
+
+### Décision gameplay
+Atteindre la graduation ne suffit pas : le joueur doit **maintenir le niveau
+exactement au quota pendant `settleDuration` secondes** (3 s par défaut,
+réglable par contenant dans l'Inspector). La moindre particule de surplus
+pendant ce temps fait déborder le contenant — définitivement, le liquide ne se
+retire pas → **défaite immédiate** (victoire devenue impossible, cf. règle du
+sujet « si le joueur est bloqué, il doit recommencer »).
+
+### Fait (code)
+
+**`ContainerFillLevel.cs`**
+- Nouveau champ `settleDuration` (3 s) + coroutine `SettleCountdown` lancée
+  quand les quotas viennent d'être atteints (mode overflow uniquement).
+- `Filled` change de sémantique : « définitivement validé » — immédiat au
+  quota pour un contenant normal, après le maintien réussi en mode overflow.
+- Nouvel événement `Overflowed` + propriétés `IsOverfilled` / `IsValidated`.
+  Le surplus annule le maintien (`MarkOverfilled`), lève `Overflowed` une
+  seule fois ; le liquide de surplus reste visible au-dessus de la graduation
+  (jusqu'à `overflowMaxHeight`).
+- Label = feedback central de la mécanique : décompte « TENIR 2.3s » pendant
+  le maintien (rafraîchi chaque frame par la coroutine), « PLEIN » une fois
+  validé, « DÉBORDÉ ! » en cas de surplus. (L'affichage « 32/30 » de la
+  version précédente disparaît au profit de « DÉBORDÉ ! ».)
+
+**`GameManager.cs`**
+- Victoire sur `IsValidated` (et non plus `IsFull`) : un contenant de
+  précision ne compte qu'après son maintien.
+- Abonné à `Overflowed` → défaite immédiate, bandeau « DÉBORDEMENT ! »
+  (les causes de défaite ont désormais chacune leur titre de bandeau).
+- Garde anti-fausse-défaite : sucre épuisé + **tous les quotas atteints** =
+  seuls des maintiens restent et plus rien ne peut déborder → on laisse les
+  comptes à rebours aboutir au lieu de déclarer « PLUS DE PARTICULES »
+  (scénario photo-finish : la toute dernière particule atteint le quota).
+
+### À faire dans l'éditeur Unity
+Rien d'obligatoire : le TestTube existant (Allow Overflow coché) récupère
+`Settle Duration = 3` par défaut — ajustable par contenant.
+
+### Validation attendue
+1. Quota atteint puis flux détourné 3 s → « TENIR 3.0s » décompte → « PLEIN »
+   → victoire (si les autres contenants sont validés aussi).
+2. Quota atteint mais le flux continue → première particule de surplus →
+   « DÉBORDÉ ! » sur le contenant + bandeau rouge « DÉBORDEMENT ! » immédiat.
+3. Dernière particule du spawner atteint pile le quota → pas de fausse
+   défaite : le décompte va au bout → victoire.
+
+## 2026-07-09 (suite) — GameManager : victoire, défaite, reset (étape 4 du plan)
+
+### Contexte
+Overflow validé en Play sur le TestTube. On attaque le jalon « un niveau
+jouable de bout en bout » : détection de victoire/défaite + reset.
+
+### Fait (code)
+
+**`Core/GameManager.cs`** (le squelette prévoyait un singleton persistant —
+décision inverse : un GameManager PAR SCÈNE de niveau, sans DontDestroyOnLoad.
+Recharger la scène remet toute la partie à zéro, le reset devient trivial ;
+la navigation entre niveaux et la progression iront dans LevelManager /
+SaveSystem, pas ici.)
+- Auto-découverte à l'Awake des `ContainerFillLevel`, `ParticleSpawner` et
+  `LineDrawer` **actifs** de la scène — zéro câblage Inspector (warnings si
+  scène incomplète).
+- **Victoire** : abonné au `Filled` de chaque contenant → quand TOUS les
+  contenants actifs sont pleins → `Won`.
+- **Défaite** : tous les spawners à quota épuisés (`IsExhausted`) ET plus
+  aucune particule vivante (`ParticleController.AliveCount`) ET pas gagné →
+  `Lost`. Une particule immobilisée sur un obstacle maintient la partie
+  ouverte (pas de détection de soft-lock : le joueur reset avec R, comme le
+  veut le sujet « si le joueur est bloqué, il doit recommencer »).
+- **Fin de partie** (`Won` ou `Lost`) : robinets coupés (`StopSpawning`),
+  dessin désactivé (`LineDrawer.enabled = false`), événement
+  `StateChanged(GameState)` levé une fois (futur VictoryPopup / HUD).
+- **Reset** : touche **R** à tout moment (Input System, `Keyboard.current`) ;
+  `ReloadLevel()` public pour le futur bouton HUD. Recharge la scène par son
+  nom → la scène doit être dans les **Build Settings**.
+- **OnGUI provisoire** : bandeau « NIVEAU RÉUSSI » (vert DA #00FF88) ou
+  « PLUS DE PARTICULES » (rouge) + « R — RECOMMENCER » (cyan DA). Aucun setup
+  de scène requis ; sera remplacé par la vraie UI à l'étape suivante.
+
+**`ParticleController.cs`** : compteur statique `AliveCount`
+(`OnEnable`/`OnDisable` — se rééquilibre seul au rechargement de scène).
+
+**`ParticleSpawner.cs`** : propriété `IsExhausted` (quota consommé ; jamais
+vrai si `totalToSpawn = 0`, donc pas de défaite possible en émission illimitée).
+
+**`ProjectSettings/EditorBuildSettings.asset`** : `MainMenu` (index 0) et
+`Level_Test` ajoutées aux Build Settings (requis par `SceneManager.LoadScene`),
+`SampleScene` du template retirée de la liste (le fichier existe toujours dans
+`Assets/Scenes/`). Les futures scènes `Level_01`…`Level_10` devront y être
+ajoutées aussi.
+
+### À faire dans l'éditeur Unity (Level_Test)
+1. GameObject vide `GameManager` → ajouter le composant **Game Manager**.
+   Rien d'autre à câbler.
+2. ⚠️ La victoire exige que TOUS les contenants actifs de la scène soient
+   pleins : ErlenMayer + TestTube présents = les deux à remplir. Désactiver
+   celui qu'on ne teste pas.
+3. Tester la **défaite** : mettre un `totalToSpawn` insuffisant (ex. 20 pour
+   un quota de 30) ou laisser le sucre se perdre sur les côtés.
+4. Play : victoire → bandeau vert, robinet coupé, dessin désactivé ; défaite →
+   bandeau rouge ; **R** → reset complet à tout moment.
+
+### Validation attendue
+- Remplir tous les contenants → « NIVEAU RÉUSSI » une seule fois, robinet
+  coupé, impossible de dessiner.
+- Sucre épuisé + quotas incomplets → « PLUS DE PARTICULES » (seulement quand
+  la dernière particule a disparu — absorbée, perdue ou détruite).
+- R en cours de partie, après victoire ou après défaite → la scène repart
+  proprement (compteurs à zéro, liquide vide).
+
+## 2026-07-09 — Overflow : déborder au-delà de la graduation (éprouvette)
+
+### Contexte
+Bicolore validé en Play avec le masque « silhouette intérieure » (Cyan 30/30 ·
+Red 30/30, `Filled` levé une fois à 60) — l'entrée du 2026-07-07 (suite 4) est
+close. Sprite + masque de l'éprouvette (test tube) générés et intégrés.
+
+### Besoin (contenant de précision)
+Sur l'éprouvette, le quota correspond à une **graduation** du verre, pas au
+bord : si le joueur verse trop, le liquide doit continuer de monter au-dessus
+de la graduation jusqu'au bord (là où le SpriteMask coupe), au lieu d'ignorer
+les particules dès le quota atteint.
+
+### Fait (code — `ContainerFillLevel.cs`)
+- Nouveaux champs `allowOverflow` + `overflowMaxHeight` : quotas atteints, le
+  contenant continue d'absorber les particules compatibles ; le surplus
+  s'empile au-dessus de la graduation à densité constante (même hauteur par
+  particule), jusqu'à `overflowMaxHeight`. À ras bord, les particules
+  traversent à nouveau. `fillHeight` garde son sens = hauteur à quota
+  (la graduation cible).
+- `Filled` reste levé **une seule fois**, au passage du quota — garde de
+  transition ajouté (sans lui, l'overflow aurait re-déclenché l'événement et
+  le log « contenant rempli » à chaque particule de surplus, `IsFull` restant
+  vrai). Log « couche pleine » également limité à la transition exacte.
+- Label : en overflow le dépassement s'affiche (« 32/30 ») — feedback de
+  précision ; « PLEIN » n'apparaît qu'à ras bord. `OverflowCount` exposé pour
+  une future pénalité (étoiles).
+- Gizmo : rectangle **cyan** = zone de quota (son haut = la graduation),
+  rectangle **rouge** au-dessus = zone de débordement jusqu'au bord du verre.
+- Warning Console si `allowOverflow` avec `overflowMaxHeight` ≤ `fillHeight`.
+
+### À faire dans l'éditeur Unity (prefab TestTube)
+1. `ContainerFillLevel` : cocher **Allow Overflow**.
+2. Caler `Fill Height` pour que le **haut du gizmo cyan** tombe sur la
+   graduation cible (le trait vert), puis `Overflow Max Height` pour que le
+   haut du gizmo rouge tombe sur le bord intérieur du verre (fin du masque).
+3. Play : verser au-delà du quota → le liquide dépasse la graduation, label
+   « 32/30 » ; à ras bord → « PLEIN », les particules traversent.
+
+### Note gameplay
+Le contenant reste **validé** dès le quota atteint (`Filled` au passage de la
+graduation), même si ça déborde ensuite. Pour pénaliser le débordement
+(étoiles, échec), brancher sur `OverflowCount` le moment venu.
+
 ## 2026-07-07 (suite 4) — Ratio bicolore : le masque était le coupable
 
 ### Diagnostic (via les logs de la suite 3)

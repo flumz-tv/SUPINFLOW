@@ -14,7 +14,7 @@ GameObject:
   - component: {fileID: 1000000000000000005}
   - component: {fileID: 1000000000000000006}
   m_Layer: 0
-  m_Name: ErlenMayer
+  m_Name: Becher
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -82,7 +82,7 @@ BoxCollider2D:
     drawMode: 0
     adaptiveTiling: 0
   m_AutoTiling: 0
-  m_Size: {x: 0.44, y: 1.81}
+  m_Size: {x: 0.86, y: 1.25}
   m_EdgeRadius: 0
 --- !u!114 &1000000000000000004
 MonoBehaviour:
@@ -123,15 +123,12 @@ MonoBehaviour:
   layers:
   - color: 4
     acceptAnyColor: 0
-    requiredCount: 30
-  - color: 0
-    acceptAnyColor: 0
-    requiredCount: 30
+    requiredCount: 68
   layerRenderers:
   - {fileID: 1000000000000000012}
-  fillWidth: 1.59
-  fillHeight: 0.93
-  fillBottomLocalY: -0.84
+  fillWidth: 0.9
+  fillHeight: 0.96
+  fillBottomLocalY: -0.67
   counterLabel: {fileID: 0}
   liquidMask: {fileID: 8086188032295445555}
 --- !u!1 &1000000000000000007
@@ -215,7 +212,7 @@ SpriteRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_MaskInteraction: 0
-  m_Sprite: {fileID: 1802158006834921532, guid: 76f903ba4015de846a118826822334cb, type: 3}
+  m_Sprite: {fileID: 1549749164004462602, guid: e24b00a9626b8f042b1c5874aed6f739, type: 3}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
   m_FlipY: 0
@@ -342,8 +339,8 @@ Transform:
   m_GameObject: {fileID: 5894627915234360242}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0.004, y: -0.386, z: 0}
-  m_LocalScale: {x: 0.1475551, y: 0.15029138, z: 0.07119188}
+  m_LocalPosition: {x: -0.0626, y: -0.1868, z: 0}
+  m_LocalScale: {x: 0.16356297, y: 0.12379773, z: 0.07119188}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 1000000000000000002}
@@ -396,7 +393,7 @@ SpriteMask:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_MaskInteraction: 0
-  m_Sprite: {fileID: 615418262127729206, guid: 90dde72193d1e3f49bec75ce112fded3, type: 3}
+  m_Sprite: {fileID: 1063392820813640020, guid: 1e5d603691cf6c245aa57b80e5d97012, type: 3}
   m_MaskAlphaCutoff: 0
   m_FrontSortingLayerID: 0
   m_BackSortingLayerID: 0

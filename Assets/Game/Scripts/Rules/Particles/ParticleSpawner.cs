@@ -36,6 +36,10 @@ namespace Supinflow
         public int SpawnedCount { get; private set; }
         public bool IsSpawning { get; private set; }
 
+        /// <summary>Vrai quand le quota d'émission du niveau est entièrement consommé
+        /// (jamais vrai si totalToSpawn = 0 : émission illimitée).</summary>
+        public bool IsExhausted => totalToSpawn > 0 && SpawnedCount >= totalToSpawn;
+
         private float timer;
 
         private void Start()

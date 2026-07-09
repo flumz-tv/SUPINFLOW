@@ -24,9 +24,29 @@ namespace Supinflow
         [Tooltip("Ordonnée monde sous laquelle la particule est considérée perdue et détruite.")]
         [SerializeField] private float killY = -12f;
 
+        [Tooltip("Ordonnée monde au-dessus de laquelle la particule est perdue (gravité inversée qui rate le plafond).")]
+        [SerializeField] private float killYTop = 12f;
+
+        [Tooltip("Abscisse |x| au-delà de laquelle la particule est perdue — le sucre qui sort par un bord latéral est perdu (règle du sujet).")]
+        [SerializeField] private float killX = 12f;
+
         private SpriteRenderer spriteRenderer;
 
         public ParticleColor Color => color;
+
+        /// <summary>Particules actuellement vivantes dans la scène — le GameManager
+        /// s'en sert pour déclarer la défaite quand le sucre est épuisé.</summary>
+        public static int AliveCount { get; private set; }
+
+        private void OnEnable()
+        {
+            AliveCount++;
+        }
+
+        private void OnDisable()
+        {
+            AliveCount--;
+        }
 
         private void Awake()
         {
@@ -37,7 +57,8 @@ namespace Supinflow
 
         private void Update()
         {
-            if (transform.position.y < killY)
+            Vector3 position = transform.position;
+            if (position.y < killY || position.y > killYTop || Mathf.Abs(position.x) > killX)
             {
                 Destroy(gameObject);
             }
