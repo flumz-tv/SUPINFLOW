@@ -1,5 +1,115 @@
 # SUPINFLOW — Journal de développement
 
+## 2026-07-10 (suite 2) — Apparition animée des panneaux de fin de partie
+
+### Décision
+Animation **pilotée par code** dans `VictoryPopup` (fondu + pop d'échelle)
+plutôt qu'un Animator : zéro clip/contrôleur à câbler dans l'éditeur, les
+prefabs de panneaux restent intacts. Un Animator redeviendra pertinent si on
+veut un jour des effets élaborés (particules, séquences).
+
+### Fait (code — `VictoryPopup.cs`)
+- `ShowPanel()` (coroutine) : délai `appearDelay` (0.4 s — le temps de voir la
+  fin de partie), puis fondu 0→1 (CanvasGroup, ajouté au panneau si absent) et
+  pop d'échelle `appearStartScale`→1 en **ease out back** (léger dépassement
+  avant de se poser) sur `appearDuration` (0.35 s). Tout est réglable dans
+  l'Inspector ; `appearDuration = 0` = apparition sèche.
+- Interaction bloquée pendant l'animation (`CanvasGroup.interactable` /
+  `blocksRaycasts`) : pas de clic sur un bouton encore fantôme.
+- Temps **non-scalé** (`WaitForSecondsRealtime`, `unscaledDeltaTime`) : un
+  futur ralenti/pause de fin de partie ne gèlerait pas l'apparition.
+- L'échelle cible est celle du panneau dans la scène (multipliée, pas écrasée) :
+  redimensionner un panneau sous le Canvas reste sans effet sur l'animation.
+
+### À faire dans l'éditeur Unity
+Rien : le CanvasGroup est ajouté tout seul au premier affichage. Régler
+éventuellement délai/durée/échelle de départ sur le composant Victory Popup.
+
+### Validation attendue
+- Victoire ou défaite → ~0.4 s d'attente, puis le panneau apparaît en fondu
+  avec un petit rebond d'échelle ; les boutons ne répondent qu'à la fin.
+- R pendant le délai → reset propre, pas de panneau orphelin.
+
+## 2026-07-10 (suite) — VictoryPopup : câblage des panneaux de fin de partie
+
+### Contexte
+Panneaux construits dans l'éditeur (`Prefabs/UI/VictoryPanel.prefab` vert
+« REACTION COMPLETE » + bouton NEXT, `Prefabs/UI/LoosePanel.prefab` rouge
+« REACTION FAILED » + bouton ↺), boutons encore vides. On remplace le bandeau
+OnGUI provisoire du GameManager (étape UI du plan).
+
+### Fait (code)
+
+**`Content/UI/VictoryPopup.cs`** (squelette → implémenté ; il gère les DEUX
+issues, pas seulement la victoire)
+- À poser sur le **Canvas** de la scène, avec `victoryPanel` / `loosePanel`
+  assignés (les instances de prefab enfants du Canvas).
+- Auto-découverte du GameManager + abonnement à `StateChanged` : `Won` →
+  VictoryPanel, `Lost` → LoosePanel. Les deux panneaux sont **masqués à
+  l'Awake** quel que soit leur état dans l'éditeur — on peut les laisser
+  actifs dans la scène pour les mettre en page.
+- Boutons auto-découverts (premier `Button` enfant de chaque panneau ;
+  champs Inspector optionnels si un panneau gagne d'autres boutons) :
+  - **NEXT** (victoire) : charge `nextSceneName` si renseigné (Build
+    Settings !), sinon **grisé** — la vraie navigation viendra avec
+    LevelManager ;
+  - **RETRY** (défaite) : `GameManager.ReloadLevel()`. La touche R reste
+    active en parallèle.
+
+**`Core/GameManager.cs`** : le bandeau OnGUI ne s'affiche plus si un
+`VictoryPopup` est présent dans la scène (auto-détecté à l'Awake) — il reste
+le filet de sécurité des scènes de test sans UI câblée.
+
+### À faire dans l'éditeur Unity (Level_Test)
+1. Glisser `VictoryPanel.prefab` et `LoosePanel.prefab` sous le **Canvas**.
+2. Sur le Canvas : ajouter le composant **Victory Popup**, y assigner les
+   deux instances. Laisser `Next Scene Name` vide pour l'instant.
+3. Cosmétique : le label du bouton du LoosePanel dit encore « NEXT » —
+   le renommer « RETRY » (c'est lui qui relance le niveau).
+4. L'EventSystem (InputSystemUIInputModule) est déjà dans la scène — rien à
+   faire ; pour une future scène créée à la main, il est requis pour que les
+   boutons cliquent.
+
+### Validation attendue
+- Victoire → panneau vert (plus de bandeau OnGUI), bouton NEXT grisé.
+- Défaite → panneau rouge, ↺ recharge la scène proprement ; R marche aussi.
+- Les panneaux sont invisibles pendant la partie même s'ils sont restés
+  actifs dans la scène sauvegardée.
+
+## 2026-07-10 — GravityInverter : rebond miroir (l'angle d'arrivée est conservé)
+
+### Constat (test en Play, GravityInverter validé par ailleurs)
+Avec `verticalMomentumKept = 0`, la particule était stoppée net à l'entrée de
+la zone : elle stagnait le temps que la gravité inversée la relance, les
+particules suivantes arrivaient à pleine vitesse et percutaient les stagnantes
+→ éclaboussure dans tous les sens, trajectoire d'origine perdue. Impossible de
+faire un niveau où le flux doit repartir avec un angle précis.
+
+### Décision gameplay
+La zone se comporte comme un **miroir** : l'élan vertical est **renvoyé dans le
+nouveau sens de la gravité** au lieu d'être annulé. La particule rebondit avec
+le même angle (symétrie verticale de sa trajectoire) et ne stagne jamais dans
+la zone — plus de collisions en chaîne sous un flux continu.
+
+### Fait
+- **`GravityInverter.cs`** : `verticalMomentumKept` change de sémantique —
+  part de l'élan vertical **renvoyée** dans le nouveau sens (1 = rebond miroir,
+  0 = ancien comportement stoppé net, déconseillé sous un flux). Défaut passé
+  de 0 à **1**. Le renvoi suit le sens de la NOUVELLE gravité (correct aussi en
+  Toggle et pour une particule qui entre en montant). Toujours appliqué
+  seulement quand le signe de la gravité change réellement (idempotence
+  SetUpward préservée).
+- **`GravityInverter.prefab`** : `verticalMomentumKept: 1`.
+- ⚠ L'instance testée en scène n'était pas sauvegardée (aucune trace dans
+  `Level_Test.unity` committée) — re-glisser le prefab ; une instance existante
+  avec un override à 0 garderait l'ancien comportement.
+
+### Validation attendue
+- Un flux qui tombe en biais sur la zone repart vers le haut avec le même
+  angle (en miroir), sans éclaboussure ni déviation à l'impact.
+- Les particules ne s'accumulent plus dans la zone ; plus de collisions
+  particule-particule à l'entrée.
+
 ## 2026-07-09 (suite 4) — GravityInverter : flèches in-game + élan cassé
 
 ### Constat (test des prefabs en Play — tout le reste validé)

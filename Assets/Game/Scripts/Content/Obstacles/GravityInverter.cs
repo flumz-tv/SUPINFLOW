@@ -11,9 +11,11 @@ namespace Supinflow
     ///   ⚠ Dimensionner alors la zone assez haute pour que la particule fasse
     ///   demi-tour À L'INTÉRIEUR : si elle ressort par en dessous et re-rentre,
     ///   elle re-bascule à chaque passage (yo-yo sous la zone).
-    /// Quand le sens change réellement, la vitesse verticale est multipliée par
-    /// verticalMomentumKept (0 par défaut : la particule repart immédiatement
-    /// dans le nouveau sens au lieu de finir sa course sur son élan).
+    /// Quand le sens change réellement, l'élan vertical est RENVOYÉ dans le
+    /// nouveau sens de la gravité (× verticalMomentumKept) : à 1 la particule
+    /// rebondit en miroir et conserve son angle d'incidence ; à 0 elle est
+    /// stoppée net — déconseillé sous un flux continu, les particules stagnantes
+    /// se font percuter par les suivantes et partent dans tous les sens.
     /// Le sens de la zone est montré au joueur par les flèches enfants du
     /// prefab (activées/centrées selon le mode, dans l'éditeur aussi).
     /// Les particules à gravité inversée montent : elles sont perdues au-delà
@@ -33,8 +35,8 @@ namespace Supinflow
         [SerializeField] private InversionMode mode = InversionMode.SetUpward;
 
         [Range(0f, 1f)]
-        [Tooltip("Part de la vitesse verticale conservée quand le sens s'inverse : 0 = la particule repart immédiatement dans le nouveau sens, 1 = elle garde tout son élan et décélère naturellement.")]
-        [SerializeField] private float verticalMomentumKept;
+        [Tooltip("Part de l'élan vertical renvoyée dans le nouveau sens quand la gravité s'inverse : 1 = rebond miroir (l'angle d'arrivée est conservé), 0 = la particule est stoppée net et repart de zéro.")]
+        [SerializeField] private float verticalMomentumKept = 1f;
 
         [Header("Visuel")]
         [Tooltip("Flèche vers le haut (enfant du prefab). Visible en SetUpward et Toggle.")]
@@ -70,12 +72,16 @@ namespace Supinflow
                     break;
             }
 
-            // Casse l'élan vertical uniquement quand le sens a réellement changé
-            // (re-traverser une zone idempotente ne freine pas la particule).
+            // Uniquement quand le sens a réellement changé (re-traverser une
+            // zone idempotente ne touche pas à la vitesse) : l'élan vertical est
+            // renvoyé dans le nouveau sens de la gravité — réflexion miroir, la
+            // particule repart avec le même angle au lieu de stagner dans la
+            // zone où les suivantes la percuteraient.
             if (!Mathf.Approximately(previousScale, body.gravityScale))
             {
                 Vector2 velocity = body.linearVelocity;
-                velocity.y *= verticalMomentumKept;
+                float newDirection = body.gravityScale < 0f ? 1f : -1f;
+                velocity.y = newDirection * Mathf.Abs(velocity.y) * verticalMomentumKept;
                 body.linearVelocity = velocity;
             }
         }

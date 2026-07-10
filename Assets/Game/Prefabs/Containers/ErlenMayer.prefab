@@ -128,10 +128,13 @@ MonoBehaviour:
     acceptAnyColor: 0
     requiredCount: 30
   layerRenderers:
-  - {fileID: 1000000000000000012}
+  - {fileID: 0}
   fillWidth: 1.59
   fillHeight: 0.93
   fillBottomLocalY: -0.84
+  allowOverflow: 0
+  overflowMaxHeight: 2.5
+  settleDuration: 3
   counterLabel: {fileID: 0}
   liquidMask: {fileID: 8086188032295445555}
 --- !u!1 &1000000000000000007
@@ -234,7 +237,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1000000000000000011}
-  - component: {fileID: 1000000000000000012}
+  - component: {fileID: 1678861634039078190}
   m_Layer: 0
   m_Name: Liquid
   m_TagString: Untagged
@@ -257,7 +260,7 @@ Transform:
   m_Children: []
   m_Father: {fileID: 1000000000000000002}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!212 &1000000000000000012
+--- !u!212 &1678861634039078190
 SpriteRenderer:
   serializedVersion: 2
   m_ObjectHideFlags: 0
@@ -283,7 +286,7 @@ SpriteRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 10754, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -304,18 +307,18 @@ SpriteRenderer:
   m_GlobalIlluminationMeshLod: 0
   m_SortingLayerID: 0
   m_SortingLayer: 0
-  m_SortingOrder: 1
+  m_SortingOrder: 0
   m_MaskInteraction: 0
   m_Sprite: {fileID: -1843197933104017171, guid: 65cbc9648c3445b4d90a9c1633052496, type: 3}
-  m_Color: {r: 1, g: 1, b: 1, a: 0}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
   m_FlipY: 0
   m_DrawMode: 0
-  m_Size: {x: 0.16, y: 0.16}
+  m_Size: {x: 2.56, y: 2.56}
   m_AdaptiveModeThreshold: 0.5
   m_SpriteTileMode: 0
   m_WasSpriteAssigned: 1
-  m_SpriteSortPoint: 1
+  m_SpriteSortPoint: 0
 --- !u!1 &5894627915234360242
 GameObject:
   m_ObjectHideFlags: 0

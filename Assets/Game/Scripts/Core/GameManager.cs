@@ -37,6 +37,7 @@ namespace Supinflow
         private ContainerFillLevel[] containers;
         private ParticleSpawner[] spawners;
         private LineDrawer lineDrawer;
+        private VictoryPopup endPanels;
 
         public GameState State { get; private set; } = GameState.Playing;
 
@@ -51,6 +52,7 @@ namespace Supinflow
             containers = FindObjectsByType<ContainerFillLevel>(FindObjectsSortMode.None);
             spawners = FindObjectsByType<ParticleSpawner>(FindObjectsSortMode.None);
             lineDrawer = FindAnyObjectByType<LineDrawer>();
+            endPanels = FindAnyObjectByType<VictoryPopup>();
 
             if (containers.Length == 0)
             {
@@ -185,12 +187,14 @@ namespace Supinflow
             SceneManager.LoadScene(SceneManager.GetActiveScene().name);
         }
 
-        // ---- Témoin visuel provisoire --------------------------------------
-        // Affiche l'issue de la partie sans aucun setup de scène. Sera remplacé
-        // par HUDController / VictoryPopup à l'étape UI.
+        // ---- Témoin visuel de secours ---------------------------------------
+        // Affiche l'issue de la partie sans aucun setup de scène. Se tait dès
+        // qu'un VictoryPopup gère les vrais panneaux de fin de partie ; reste
+        // le filet de sécurité des scènes de test sans UI câblée.
         private void OnGUI()
         {
             if (State == GameState.Playing) return;
+            if (endPanels != null) return;
 
             var titleStyle = new GUIStyle(GUI.skin.label)
             {
