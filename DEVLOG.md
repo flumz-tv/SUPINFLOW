@@ -1,5 +1,42 @@
 # SUPINFLOW — Journal de développement
 
+## 2026-07-14 — MainMenuUI : câblage des boutons PLAY / SETTINGS / QUIT
+
+### Contexte
+Menu principal construit dans l'éditeur (Canvas > Panel : logo, titre,
+PlayButton, SettingsButton, QuitButton), boutons encore muets — aucun script
+attaché dans la scène. L'objet `Core/GameManager` de la scène MainMenu est un
+GameObject vide sans composant (le GameManager de jeu est réservé aux scènes
+de niveau — décision du 2026-07-09).
+
+### Fait (code — `Content/UI/MainMenuUI.cs`, squelette → implémenté)
+- À poser sur le **Canvas** de la scène MainMenu. Boutons **auto-découverts
+  par nom de GameObject** (`PlayButton` / `SettingsButton` / `QuitButton`,
+  inactifs compris), champs Inspector optionnels si les noms changent.
+  Câblage onClick en code — rien à renseigner dans les OnClick de l'éditeur
+  (pattern VictoryPopup).
+- **PLAY** : charge `playSceneName` (défaut `Level_Test`, présent dans les
+  Build Settings). Provisoire : l'écran de sélection de niveaux
+  (LevelSelectUI) prendra le relais.
+- **SETTINGS** : ouvre/ferme `settingsPanel` si assigné ; sinon **grisé**
+  (même pattern que NEXT en attente de LevelManager). Le panneau assigné est
+  masqué au lancement quel que soit son état dans l'éditeur.
+- **QUIT** : `Application.Quit()` ; dans l'éditeur, arrêt du mode Play
+  (`EditorApplication.isPlaying = false`) pour que le bouton reste testable.
+- Warning Console par bouton introuvable (scène incomplète).
+
+### À faire dans l'éditeur Unity (MainMenu)
+1. Sur le **Canvas** : ajouter le composant **Main Menu UI**. Rien d'autre à
+   câbler si les boutons gardent leurs noms actuels.
+2. Laisser `Settings Panel` vide pour l'instant → bouton SETTINGS grisé.
+3. L'objet vide `Core/GameManager` ne sert à rien dans cette scène — à
+   supprimer (ou à garder vide, inoffensif).
+
+### Validation attendue
+- Play (éditeur) : PLAY → charge Level_Test ; SETTINGS grisé ; QUIT → sort du
+  mode Play.
+- Aucun warning Console au lancement de la scène MainMenu.
+
 ## 2026-07-10 (suite 2) — Apparition animée des panneaux de fin de partie
 
 ### Décision
