@@ -1,4 +1,5 @@
 using System;
+using System.Text.RegularExpressions;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
@@ -152,7 +153,23 @@ namespace Supinflow
         {
             State = GameState.Won;
             EndRound();
+            SaveVictory();
             Debug.Log("Niveau réussi : tous les contenants sont validés.", this);
+        }
+
+        /// <summary>Enregistre la victoire dans la progression (SaveSystem, lue
+        /// par LevelSelectUI) : niveau courant marqué terminé, niveau suivant
+        /// déverrouillé. Le numéro du niveau est lu à la fin du nom de la scène
+        /// (« Level_3 » → 3) ; les scènes sans numéro (Level_Test) ne comptent
+        /// pas.</summary>
+        private void SaveVictory()
+        {
+            Match match = Regex.Match(SceneManager.GetActiveScene().name, @"(\d+)$");
+            if (!match.Success) return;
+
+            int level = int.Parse(match.Groups[1].Value);
+            SaveSystem.MarkLevelCompleted(level);
+            SaveSystem.UnlockLevel(level + 1);
         }
 
         private void Lose(string logMessage, string bannerTitle)

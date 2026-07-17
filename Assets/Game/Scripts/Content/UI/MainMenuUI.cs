@@ -20,55 +20,14 @@ namespace Supinflow
     /// </summary>
     public class MainMenuUI : MonoBehaviour
     {
-        [Tooltip("Scène chargée par PLAY (doit figurer dans les Build Settings). Sera remplacée par l'écran de sélection de niveaux.")]
-        [SerializeField] private string playSceneName = "Level_Test";
-
-        [Tooltip("Panneau de réglages ouvert par SETTINGS. Vide = bouton grisé, en attendant SettingsPanel.")]
-        [SerializeField] private GameObject settingsPanel;
-
-        [Header("Boutons (optionnel — auto-découverts par nom sinon)")]
-        [Tooltip("Vide = Button enfant nommé PlayButton.")]
-        [SerializeField] private Button playButton;
-
-        [Tooltip("Vide = Button enfant nommé SettingsButton.")]
-        [SerializeField] private Button settingsButton;
-
         [Tooltip("Vide = Button enfant nommé QuitButton.")]
         [SerializeField] private Button quitButton;
 
         private void Awake()
         {
-            ResolveButton(ref playButton, "PlayButton");
-            ResolveButton(ref settingsButton, "SettingsButton");
             ResolveButton(ref quitButton, "QuitButton");
 
-            if (playButton != null)
-            {
-                if (string.IsNullOrEmpty(playSceneName))
-                {
-                    playButton.interactable = false;
-                }
-                else
-                {
-                    playButton.onClick.AddListener(Play);
-                }
-            }
-
-            if (settingsButton != null)
-            {
-                if (settingsPanel == null)
-                {
-                    // Pas encore de panneau de réglages : bouton visible mais
-                    // grisé (SettingsPanel prendra le relais).
-                    settingsButton.interactable = false;
-                }
-                else
-                {
-                    settingsPanel.SetActive(false);
-                    settingsButton.onClick.AddListener(ToggleSettings);
-                }
-            }
-
+           
             if (quitButton != null)
             {
                 quitButton.onClick.AddListener(Quit);
@@ -93,16 +52,7 @@ namespace Supinflow
             Debug.LogWarning($"MainMenuUI : aucun Button nommé {gameObjectName} trouvé sous {name} — ce bouton restera muet.", this);
         }
 
-        private void Play()
-        {
-            SceneManager.LoadScene(playSceneName);
-        }
-
-        private void ToggleSettings()
-        {
-            settingsPanel.SetActive(!settingsPanel.activeSelf);
-        }
-
+      
         private void Quit()
         {
 #if UNITY_EDITOR
